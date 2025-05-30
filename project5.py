@@ -1,5 +1,5 @@
 """
-Dmart analysis using PySpark (DataFrame API only)
+Dmart analysis using PySpark
 
 Author: GOKULARAJA R
 """
