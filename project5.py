@@ -1,5 +1,5 @@
 """
-Dmart analysis using PySpark (DataFrame API only)
+Dmart analysis using PySpark
 
 Author: GOKULARAJA R
 """
@@ -17,14 +17,21 @@ def create_spark_session():
 def load_data(spark, path):
     return spark.read.option("header", True).option("inferSchema", True).csv(path)
 
+#Filling numeric columns with averages
+def fill_numeric_with_avg(df, cols):
+    for column in cols:
+        avg_val = df.select(avg(column)).first()[0]
+        if avg_val is not None:
+            df = df.fillna({column: avg_val})
+    return df
+
+#Fillna with default for string
+def fill_string_with_default(df, cols, default="Unknown"):
+    return df.fillna({col: default for col in cols})
+
 # Clean and Transform Data
 def clean_transform_data(products_df, sales_df, customers_df):
-    # Drop missing values
-    products_df = products_df.dropna()
-    sales_df = sales_df.dropna()
-    customers_df = customers_df.dropna()
-
-    # Rename columns for consistent use
+    #Renaming columns for consistency
     products_df = products_df.withColumnRenamed("Product ID", "Product_ID") \
                              .withColumnRenamed("Category", "Product_Category") \
                              .withColumnRenamed("Sub-Category", "Product_Sub_Category") \
@@ -32,28 +39,56 @@ def clean_transform_data(products_df, sales_df, customers_df):
 
     customers_df = customers_df.withColumnRenamed("Customer ID", "Customer_ID") \
                                .withColumnRenamed("Customer Name", "Customer_Name") \
-                               .withColumnRenamed("Segment", "Customer_Segment")
+                               .withColumnRenamed("Segment", "Customer_Segment") \
+                               .withColumnRenamed("Age", "Age") \
+                               .withColumnRenamed("Country", "Country") \
+                               .withColumnRenamed("City", "City") \
+                               .withColumnRenamed("State", "State") \
+                               .withColumnRenamed("Postal Code", "Postal_Code") \
+                               .withColumnRenamed("Region", "Region")
 
-    sales_df = sales_df.withColumnRenamed("Customer ID", "Customer_ID") \
+    sales_df = sales_df.withColumnRenamed("Ship Date", "Ship_Date") \
+                       .withColumnRenamed("Ship Mode", "Shipping_Mode") \
+                       .withColumnRenamed("Customer ID", "Customer_ID") \
                        .withColumnRenamed("Product ID", "Product_ID") \
                        .withColumnRenamed("Sales", "Sales_Amount") \
-                       .withColumnRenamed("Ship Mode", "Shipping_Mode")
-    print("printing the schema for df's")
-    sales_df.printSchema()
-    products_df.printSchema()
-    customers_df.printSchema()                   
+                       .withColumnRenamed("Quantity", "Quantity") \
+                       .withColumnRenamed("Discount", "Discount") \
+                       .withColumnRenamed("Profit", "Profit")
 
-    # Join the DataFrames
+    #Drop rows where IDs are missing
+    sales_df = sales_df.dropna(subset=["Customer_ID", "Product_ID"])
+    customers_df = customers_df.dropna(subset=["Customer_ID"])
+    products_df = products_df.dropna(subset=["Product_ID"])
+
+    # Fill numeric columns with averages
+    sales_df = fill_numeric_with_avg(sales_df, ["Sales_Amount", "Quantity", "Discount", "Profit"])
+    customers_df = fill_numeric_with_avg(customers_df, ["Age"])
+
+    # Fill string columns with defaults
+    sales_df = fill_string_with_default(sales_df, ["Ship_Date", "Shipping_Mode"])
+    customers_df = fill_string_with_default(customers_df, ["Customer_Name", "Customer_Segment", "Country", "City", "State", "Region"])
+    products_df = fill_string_with_default(products_df, ["Product_Category", "Product_Sub_Category", "Product_Name"])
+    customers_df = customers_df.fillna({"Postal_Code": "00000"})
+
+    # Showing schemas
+    print("Schemas after cleaning and renaming:")
+    sales_df.printSchema()
+    customers_df.printSchema()
+    products_df.printSchema()
+
+    #Join all data
     df = sales_df.join(products_df, on="Product_ID", how="inner") \
                  .join(customers_df, on="Customer_ID", how="inner")
-    print("##########Printing the Resultant DF after combining all 3 ##############")
+
+    print("Combined DataFrame Sample:")
     df.show()
 
     return df
 
-# Analysis using PySpark
+#Analysis using PySpark
 def run_dataframe_queries(df):
-    print("PySpark DataFrame API Analysis")
+    print("\n PySpark DataFrame API Analysis Results\n")
 
     print("1. Total Sales for Each Product Category")
     df.groupBy("Product_Category").agg(sum("Sales_Amount").alias("Total_Sales")).show()
@@ -102,15 +137,11 @@ def main():
     sales_path = "F:/Guvi/Mini project 5 Dmart analysis using pyspark/dataset/sales.csv"
     customers_path = "F:/Guvi/Mini project 5 Dmart analysis using pyspark/dataset/customer.csv"
 
-    # Loading datasets
     products_df = load_data(spark, products_path)
     sales_df = load_data(spark, sales_path)
     customers_df = load_data(spark, customers_path)
 
-    # Clean and transform
     df = clean_transform_data(products_df, sales_df, customers_df)
-
-    # Run analysis
     run_dataframe_queries(df)
 
     spark.stop()
